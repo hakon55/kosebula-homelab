@@ -1,0 +1,26 @@
+filenames:
+  - /logs/auth.log
+  - /logs/syslog
+  - /logs/kern.log
+labels:
+  type: syslog
+---
+filenames:
+ - /logs/nextcloud.log
+labels:
+  type: Nextcloud
+---
+filenames:
+  - /logs/nginx/*.log
+labels:
+  type: nginx-proxy-manager
+---
+filenames:
+ - /logs/jellyfin/log_*.log
+labels:
+  type: jellyfin
+---
+filenames:
+ - /logs/vaultwarden.log
+labels:
+  type: Vaultwarden

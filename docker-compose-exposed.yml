@@ -1,0 +1,208 @@
+version: "3"
+
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer # This line is not allowed to be changed
+    external: true
+  jellyfin_config: 
+    name: jellyfin_config 
+    external: true
+  wallabag_data: 
+    name: wallabag_data
+    external: true
+  wallabag_images: 
+    name: wallabag_images
+    external: true
+  adguard_work: 
+    name: adguard_work
+    external: true
+  adguard_conf:
+    name: adguard_conf
+    external: true
+  nginx_data: 
+    name: nginx_data
+    external: true
+  nginx_letsencrypt: 
+    name: nginx_letsencrypt
+    external: true
+  vaultwarden: 
+    name: vaultwarden
+    external: true
+
+  crowdsec_data:
+    name: crowdsec_data
+    external: true
+  crowdsec_config:
+    name: crowdsec_config
+    external: true
+  nginx_logs:
+    name: nginx_logs
+    external: true
+  jellyfin_logs:
+    name: jellyfin_logs
+    external: true
+
+services:
+
+  nginx: # https://nginxproxymanager.com/guide/#quick-setup
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx
+    ports:
+      - 80:80
+      - 81:81
+      - 443:443
+    volumes:
+      - nginx_data:/data
+      - nginx_letsencrypt:/etc/letsencrypt
+      - nginx_logs:/data/logs 
+    networks:
+      - exposed
+    restart: unless-stopped
+
+  crowdsec: # https://hub.docker.com/r/crowdsecurity/crowdsec
+    image: crowdsecurity/crowdsec
+    container_name: crowdsec
+    ports:
+      - 8080:8080
+    volumes:
+      - ./acquis.yaml:/etc/crowdsec/acquis.yaml
+      - crowdsec_data:/var/lib/crowdsec/data
+      - crowdsec_config:/etc/crowdsec
+      - /var/log/auth.log:/logs/auth.log:ro
+      - /var/log/syslog:/logs/syslog:ro
+      - /var/log/kern.log:/logs/kern.log:ro
+      - /var/lib/docker/volumes/nextcloud_aio_nextcloud/_data/data/nextcloud.log:/logs/nextcloud.log:ro
+      - /var/lib/docker/volumes/vaultwarden/_data/vaultwarden.log:/logs/vaultwarden.log:ro
+      - nginx_logs:/logs/nginx:ro
+      - jellyfin_logs:/logs/jellyfin:ro
+    environment:
+      - TZ=${TZ}
+      - PARSERS=crowdsecurity/whitelists
+      - COLLECTIONS=crowdsecurity/linux crowdsecurity/sshd crowdsecurity/base-http-scenarios crowdsecurity/nextcloud crowdsecurity/http-cve crowdsecurity/whitelist-good-actors crowdsecurity/iptables crowdsecurity/nginx-proxy-manager LePresidente/jellyfin Dominic-Wagner/vaultwarden
+      - ENROLL_INSTANCE_NAME=kosebula
+      - ENROLL_KEY=${CROWDSEC_ENROLL}
+      - BOUNCER_KEY_firewall=${CROWDSEC_BOUNCER_firewall}
+    networks:
+      - exposed
+    restart: unless-stopped
+
+  adguardhome: # https://hub.docker.com/r/adguard/adguardhome
+    image: adguard/adguardhome
+    container_name: adguardhome
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 3001:3000/tcp
+      - 83:80/tcp
+    volumes:
+      - adguard_work:/opt/adguardhome/work
+      - adguard_conf:/opt/adguardhome/conf
+    networks:
+      - exposed
+    restart: unless-stopped
+
+  wireguard: # https://github.com/linuxserver/docker-wireguard
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: wireguard
+    ports:
+      - ${WIREGUARD_PORT}:51820/udp
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - SERVERURL=${SERVER_URL}
+      - SERVERPORT=${WIREGUARD_PORT} 
+      - PEERS=hakonIphone,hakonPC,synneIphone 
+      - PEERDNS=auto #optional, can also be set to adguardhome
+      - INTERNAL_SUBNET=10.13.13.0 
+      - ALLOWEDIPS=192.168.0.0/24,10.13.13.1
+      - LOG_CONFS=true
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - ./wireguard_config:/config 
+      - /lib/modules:/lib/modules
+    networks:
+      - exposed
+    restart: unless-stopped
+
+  vaultwarden: # https://github.com/dani-garcia/vaultwarden/wiki/Using-Docker-Compose
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    environment:
+      - TZ=${TZ}
+      - SIGNUPS_ALLOWED=false
+      - SHOW_PASSWORD_HINT=false
+      - LOG_FILE=/data/vaultwarden.log
+      - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN}
+    volumes:
+      - vaultwarden:/data
+    networks:
+      - exposed
+    restart: unless-stopped
+
+  nextcloud: # https://github.com/nextcloud/all-in-one/blob/main/docker-compose.yml
+    image: nextcloud/all-in-one:latest
+    container_name: nextcloud-aio-mastercontainer # This line is not allowed to be changed
+    ports:
+      - 8081:8080
+    environment: 
+      - APACHE_PORT=11000 
+      - APACHE_IP_BINDING=0.0.0.0
+      - SKIP_DOMAIN_VALIDATION=true
+      - NEXTCLOUD_ENABLE_DRI_DEVICE=true 
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config # This line is not allowed to be changed
+      - type: tmpfs
+        target: /tmp
+      - /var/run/docker.sock:/var/run/docker.sock:ro 
+    networks:
+      - exposed
+    restart: unless-stopped
+
+  jellyfin: # https://docs.linuxserver.io/images/docker-jellyfin
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    ports:
+      - 8096:8096
+      - 7359:7359/udp #optional
+      - 1900:1900/udp #optional
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - DOCKER_MODS=linuxserver/mods:jellyfin-amd
+    devices:
+      - /dev/dri:/dev/dri # https://github.com/linuxserver/docker-mods/tree/jellyfin-amd
+    group_add:
+      - "109" # Lagt til for å ha rettigheter til /dev/dri
+    volumes:
+      - jellyfin_config:/config
+      - jellyfin_logs:/config/log
+      - /mnt/HDD/movies:/data/movies 
+      - /home/hakon/Movies:/data/movies_SSD 
+      - /mnt/HDD/tvshows:/data/tvshows 
+    networks:
+      - exposed
+    restart: unless-stopped
+
+  wallabag: # https://github.com/wallabag/docker
+    image: wallabag/wallabag 
+    container_name: wallabag 
+    ports: 
+    - 9880:80 
+    environment: 
+    - SYMFONY__ENV__DOMAIN_NAME=${WALLABAG_URL}
+    volumes:
+      - wallabag_data:/var/www/wallabag/data
+      - wallabag_images:/var/www/wallabag/web/assets/images
+    networks:
+      - exposed
+    restart: unless-stopped
+
+networks:
+  exposed:
+    name: exposed

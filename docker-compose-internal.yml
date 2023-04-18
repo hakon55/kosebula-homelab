@@ -1,0 +1,77 @@
+version: "3"
+
+volumes:
+  duplicati_config:
+    name: duplicati_config
+    external: true
+  uptime-kuma_data:
+    name: uptime-kuma_data
+    external: true
+
+services:
+  duplicati: # https://docs.linuxserver.io/images/docker-duplicati
+    image: lscr.io/linuxserver/duplicati:latest
+    container_name: duplicati
+    ports:
+      - 8200:8200
+    environment:
+      - TZ=${TZ}
+      - PUID=0
+      - PGID=0
+    volumes:
+      - duplicati_config:/config
+      - /mnt/HDD/backup:/backups
+      - /var/lib/docker/volumes:/source
+    networks:
+      - internal
+    restart: unless-stopped
+
+  ddclient: # https://docs.linuxserver.io/images/docker-ddclient
+    image: lscr.io/linuxserver/ddclient:latest
+    container_name: ddclient
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - ./ddclient_config:/config
+    networks:
+      - internal
+    restart: unless-stopped
+
+  uptime-kuma: # https://hub.docker.com/r/louislam/uptime-kuma
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    ports:
+      - 3002:3001
+    volumes:
+      - uptime-kuma_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - internal
+    restart: unless-stopped
+
+  whatsupdocker: # https://fmartinou.github.io/whats-up-docker/#/introduction/
+    image: fmartinou/whats-up-docker
+    container_name: wud
+    ports:
+      - 3000:3000
+    environment:
+      - WUD_REGISTRY_HUB_LOGIN=${WUD_HUB_LOGIN}
+      - WUD_REGISTRY_HUB_PASSWORD=${WUD_HUB_PASSWORD}
+      - WUD_REGISTRY_LSCR_USERNAME=${WUD_LSCR_USERNAME}
+      - WUD_REGISTRY_LSCR_TOKEN=${WUD_LSCR_TOKEN}
+      - WUD_TRIGGER_MQTT_MOSQUITTO_URL=${WUD_MOSQUITTO_URL}
+      - WUD_TRIGGER_MQTT_MOSQUITTO_USER=${WUD_MOSQUITTO_USER}
+      - WUD_TRIGGER_MQTT_MOSQUITTO_PASSWORD=${WUD_MOSQUITTO_PASSWORD} 
+      - WUD_TRIGGER_MQTT_MOSQUITTO_HASS_ENABLED=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - internal
+    restart: unless-stopped
+
+networks:
+  internal:
+    name: internal
+
