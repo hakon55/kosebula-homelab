@@ -4,8 +4,9 @@ My self-hosted apps, using docker-compose. Stored here mostly for back-up purpos
 ## Get Started
 Install docker (with docker compose), and fill out correct environment variables. Run with `docker compose up -d`  
 
-## Exposed
+## Docker compose naming
+### Exposed
 Contains all docker-compose services that are exposed to the internett or needs to be in the same network as the exposed stack
 
-## Internal
+### Internal
 Not exposed to the internet at all
